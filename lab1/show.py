@@ -1,10 +1,11 @@
 #!/bin/env python
 
-import cv2 as cv
-import numpy as np
 import glob
 import os
 import sys
+
+import cv2 as cv
+import numpy as np
 
 
 def sort_contours(cnts):
@@ -17,11 +18,11 @@ def sort_contours(cnts):
     return (cnts, boxes)
 
 
-def box_extraction(img_for_box_extraction_path, cropped_dir_path):
+def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
     img = cv.imread(img_for_box_extraction_path, 0)  # Read the image
 
-    (thresh, orig) = cv.threshold(img, 100, 255,
-                                  cv.THRESH_BINARY)  # Thresholding the image
+    # (thresh, img) = cv.threshold(img, 100, 255,
+    #                               cv.THRESH_BINARY)  # Thresholding the image
 
     # img = cv.blur(img, (3, 3))
     img_bin = cv.adaptiveThreshold(img, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -70,32 +71,34 @@ def box_extraction(img_for_box_extraction_path, cropped_dir_path):
     # Sort all the contours by top to bottom.
     (contours, boundingBoxes) = sort_contours(contours)
 
+    print(f"total: {len(contours)} contours")
     idx = 0
     for c in contours:
         # Returns the location and width,height for every contour
         x, y, w, h = cv.boundingRect(c)
 
         # If the box height is greater then 20, widht is >80, then only save it as a box in "cropped/" folder.
-        if (w > 100 and w < 200) and (h > 100 and h < 200):
+        if (min(sizes) < w < max(sizes)) and (min(sizes) < h < max(sizes)) and abs(h-w)/h < 0.1:
             idx += 1
             new_img = img[y:y+h, x:x+w]
             resized = cv.resize(new_img, (32, 32), interpolation=cv.INTER_AREA)
             ret, resized = cv.threshold(resized, 180, 255, cv.THRESH_BINARY)
-            cv.imwrite(cropped_dir_path+str(idx) + '.png', resized)
-
-    print(idx)
-
-# box_extraction("./1/mr.jpg", "./crop/")
+            cv.imwrite(os.path.join(cropped_dir_path,
+                                    str(idx) + '.png'), resized)
+    print("count:", idx)
+    print()
 
 
 def main():
     folder = "./photos"
-    if len(sys.argv) == 2:
+    if len(sys.argv) >= 2:
         folder = sys.argv[1]
 
     folder = os.path.abspath(folder)
 
     out = os.path.join(os.path.dirname(folder), "crop")
+    if len(sys.argv) >= 3:
+        out = sys.argv[2]
     try:
         os.mkdir(out)
     except FileExistsError:
@@ -105,21 +108,25 @@ def main():
 
     folders = os.listdir(folder)
     for idx, name in enumerate(folders):
-        print(idx, name)
+        print(f"dir {idx}: \t{name}")
         process_folder(folder, name, out)
 
 
 def process_folder(folder: str, name: str, out: str):
     files = glob.glob(os.path.join(folder, name)+"/*.*g")
-    print(files)
+    # print(files)
     for filename in files:
-        one = os.path.join(out, name, filename)
+        basename = os.path.splitext(os.path.basename(filename))
+        if basename[1][-1] == '~':
+            continue
+        one = os.path.join(out, name, basename[0])
         try:
-            os.mkdir(one)
+            os.makedirs(one)
         except FileExistsError:
             pass
-        print("extract", os.path.splitext(one)[0])
-        # box_extraction(os.path.join(folder, name, filename), out)
+        print("extract:", os.path.basename(filename))
+        # print(one)
+        box_extraction(os.path.join(folder, name, filename), (80, 250), one)
 
 
 if __name__ == "__main__":
