@@ -3,9 +3,12 @@
 import glob
 import os
 import sys
+import re
 
 import cv2 as cv
 import numpy as np
+
+sizes = re.compile(r"^.*_(\d+)x(\d+)\..*$")
 
 
 def sort_contours(cnts):
@@ -18,8 +21,8 @@ def sort_contours(cnts):
     return (cnts, boxes)
 
 
-def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
-    img = cv.imread(img_for_box_extraction_path, 0)  # Read the image
+def box_extraction(path, sizes, cropped_dir_path):
+    img = cv.imread(path, 0)  # Read the image
 
     # (thresh, img) = cv.threshold(img, 100, 255,
     #                               cv.THRESH_BINARY)  # Thresholding the image
@@ -31,14 +34,16 @@ def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
 
     # cv.imwrite("Image_bin.jpg", img_bin)
 
-    # Defining a kernel length
-    kernel_length = np.array(img).shape[1]//20
+    rectangle = sizes
+    if path.find("my") != -1:
+        rectangle = (10, 10)
+    print(f"name: {path}, image shape {rectangle}")
 
     # A verticle kernel of (1 X kernel_length), which will detect all the verticle lines from the image.
     verticle_kernel = cv.getStructuringElement(
-        cv.MORPH_RECT, (1, kernel_length))
+        cv.MORPH_RECT, (1, rectangle[0]))
     # A horizontal kernel of (kernel_length X 1), which will help to detect all the horizontal line from the image.
-    hori_kernel = cv.getStructuringElement(cv.MORPH_RECT, (kernel_length, 1))
+    hori_kernel = cv.getStructuringElement(cv.MORPH_RECT, (rectangle[1], 1))
     # A kernel of (3 X 3) ones.
     kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
 
@@ -51,6 +56,16 @@ def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
     img_temp2 = cv.erode(img_bin, hori_kernel, iterations=3)
     horizontal_lines_img = cv.dilate(img_temp2, hori_kernel, iterations=3)
     # cv.imwrite("horizontal_lines.jpg", horizontal_lines_img)
+
+    # cv.imshow(f"vertical: {path}", img_temp1)
+    # while cv.waitKey() != 13:
+    #     pass
+    # cv.imshow(f"all: {path}", img_bin)
+    # while cv.waitKey() != 13:
+    #     pass
+
+    # cv.destroyAllWindows()
+
 
     # Weighting parameters, this will decide the quantity of an image to be added to make a new image.
     alpha = 0.5
@@ -77,8 +92,9 @@ def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
         # Returns the location and width,height for every contour
         x, y, w, h = cv.boundingRect(c)
 
+        # print(w, h)
         # If the box height is greater then 20, widht is >80, then only save it as a box in "cropped/" folder.
-        if (min(sizes) < w < max(sizes)) and (min(sizes) < h < max(sizes)) and abs(h-w)/h < 0.1:
+        if (min(sizes) < w < max(sizes)) and (min(sizes) < h < max(sizes)):
             idx += 1
             new_img = img[y:y+h, x:x+w]
             resized = cv.resize(new_img, (32, 32), interpolation=cv.INTER_AREA)
@@ -91,20 +107,28 @@ def box_extraction(img_for_box_extraction_path, sizes, cropped_dir_path):
 
 def main():
     folder = "./photos"
-    if len(sys.argv) >= 2:
-        folder = sys.argv[1]
+    # if len(sys.argv) >= 2:
+    #     folder = sys.argv[1]
 
     folder = os.path.abspath(folder)
 
     out = os.path.join(os.path.dirname(folder), "crop")
-    if len(sys.argv) >= 3:
-        out = sys.argv[2]
+    # if len(sys.argv) >= 3:
+    #     out = sys.argv[2]
     try:
         os.mkdir(out)
     except FileExistsError:
         pass
 
     print("out", out)
+
+    if len(sys.argv) == 2:
+        one = sys.argv[1]
+        box_size = (160, 250)
+        if m := sizes.match(os.path.basename(one)):
+            box_size = tuple(map(int, m.groups()))
+        box_extraction(os.path.abspath(one), box_size, out)
+        return
 
     folders = os.listdir(folder)
     for idx, name in enumerate(folders):
@@ -124,9 +148,12 @@ def process_folder(folder: str, name: str, out: str):
             os.makedirs(one)
         except FileExistsError:
             pass
-        print("extract:", os.path.basename(filename))
-        # print(one)
-        box_extraction(os.path.join(folder, name, filename), (80, 250), one)
+        base = os.path.basename(filename)
+        box_size = (80, 250)
+        print("extract:", base)
+        if m := sizes.match(base):
+            box_size = tuple(map(int, m.groups()))
+        box_extraction(os.path.join(folder, name, filename), box_size, one)
 
 
 if __name__ == "__main__":
